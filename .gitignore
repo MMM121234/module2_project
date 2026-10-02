@@ -1,0 +1,15 @@
+# API 키 (절대 커밋 금지)
+.env
+
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+
+# 3팀(ai_report)이 자동 생성하는 파일
+ai_report/data/vector_db.json
+ai_report/outputs/
+
+# 에디터
+.vscode/
+.idea/

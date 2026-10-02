@@ -1,0 +1,410 @@
+[
+  {
+    "item_code": "U-01",
+    "section": "개요",
+    "text": "root 는 시스템의 모든 권한을 가진 계정이다. 원격에서 root 로 직접 로그인할 수 있으면 무차별 대입(brute force) 공격으로 시스템 전체를 장악당할 수 있다. 일반 계정으로 접속한 뒤 su 또는 sudo 로 권한을 상승하도록 해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-01",
+    "section": "판단기준",
+    "text": "양호: 원격 접속 서비스를 사용하지 않거나, 사용하더라도 root 직접 접속이 차단된 경우(SSH: PermitRootLogin no). 취약: root 직접 접속이 허용된 경우(PermitRootLogin yes 등).",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-01",
+    "section": "점검방법",
+    "text": "SSH: grep -i '^PermitRootLogin' /etc/ssh/sshd_config 로 설정값을 확인한다. Rocky Linux 9 는 /etc/ssh/sshd_config.d/*.conf 설정이 우선 적용될 수 있으므로 grep -ri PermitRootLogin /etc/ssh/ 로 함께 확인한다. Telnet 사용 시 /etc/securetty 와 /etc/pam.d/login 의 pam_securetty.so 설정을 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-01",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2) /etc/ssh/sshd_config 에서 PermitRootLogin 값을 no 로 수정한다. sshd_config.d 아래 파일에 별도 설정이 있으면 그 파일도 수정한다. 3) sshd -t 로 문법을 검사한 뒤 systemctl restart sshd 로 재시작한다. 주의: 조치 전에 sudo 가 가능한 일반 계정(wheel 그룹)으로 접속되는지 먼저 확인해야 한다. 그렇지 않으면 서버에 접속하지 못할 수 있다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-02",
+    "section": "개요",
+    "text": "비밀번호가 짧거나 단순하면 추측·대입 공격과 사전 공격에 쉽게 뚫린다. 복잡도 규칙과 사용 기간 제한 정책을 시스템에 강제해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-02",
+    "section": "판단기준",
+    "text": "양호: 비밀번호 최소 길이 8자 이상이고 영문 대·소문자, 숫자, 특수문자를 조합하도록 설정되어 있으며, 최대 사용기간 90일 이하, 최소 사용기간 1일 이상으로 설정된 경우. 취약: 위 정책이 설정되지 않았거나 기준에 미달하는 경우. (세부 수치는 기관 정책에 따라 다를 수 있다.)",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-02",
+    "section": "점검방법",
+    "text": "복잡성: cat /etc/security/pwquality.conf 에서 minlen, dcredit, ucredit, lcredit, ocredit 값을 확인한다. 사용기간: grep -E '^PASS_(MAX|MIN)_DAYS' /etc/login.defs 로 PASS_MAX_DAYS, PASS_MIN_DAYS 를 확인한다. 개별 계정은 chage -l 계정명 으로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-02",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/security/pwquality.conf /etc/security/pwquality.conf.bak 2) /etc/security/pwquality.conf 에 minlen = 8, dcredit = -1, ucredit = -1, lcredit = -1, ocredit = -1 을 설정한다. 3) /etc/login.defs 에서 PASS_MAX_DAYS 90, PASS_MIN_DAYS 1 로 수정한다. 4) 이미 존재하는 계정에는 login.defs 가 적용되지 않으므로 chage -M 90 -m 1 계정명 으로 별도 적용한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-03",
+    "section": "개요",
+    "text": "로그인 실패 횟수 제한이 없으면 공격자가 비밀번호를 무제한으로 시도할 수 있다. 일정 횟수 이상 실패하면 계정을 잠가 대입 공격을 막아야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-03",
+    "section": "판단기준",
+    "text": "양호: 계정 잠금 임계값이 10회 이하의 값으로 설정된 경우. 취약: 계정 잠금 임계값이 설정되지 않았거나 10회를 초과하는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-03",
+    "section": "점검방법",
+    "text": "Rocky Linux 9 는 pam_faillock 을 사용한다. grep -vE '^#|^$' /etc/security/faillock.conf 로 deny 값을 확인하고, authselect current 와 /etc/pam.d/system-auth, /etc/pam.d/password-auth 에 pam_faillock.so 가 적용되어 있는지 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-03",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/security/faillock.conf /etc/security/faillock.conf.bak 2) authselect enable-feature with-faillock 로 faillock 기능을 활성화한다. 3) /etc/security/faillock.conf 에서 deny = 10 (또는 더 작은 값), unlock_time = 120 으로 설정한다. 주의: 값을 너무 작게 하면 정상 사용자가 잠길 수 있고, authselect 적용 시 PAM 설정이 바뀌므로 사전에 현재 설정을 백업한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-04",
+    "section": "개요",
+    "text": "과거 유닉스는 암호화된 비밀번호를 누구나 읽을 수 있는 /etc/passwd 에 저장해 오프라인 크래킹에 노출되었다. 암호 해시를 읽기 제한된 /etc/shadow 에 분리 저장(shadow 패스워드)해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-04",
+    "section": "판단기준",
+    "text": "양호: 쉐도우 패스워드를 사용하고 /etc/passwd 파일의 두 번째 필드가 x 로 되어 있는 경우. 취약: 쉐도우 패스워드를 사용하지 않거나 /etc/passwd 에 암호 해시가 그대로 저장된 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-04",
+    "section": "점검방법",
+    "text": "awk -F: '$2 != \"x\" {print $1}' /etc/passwd 로 두 번째 필드가 x 가 아닌 계정을 찾는다. 결과가 없으면 양호이다. /etc/shadow 파일이 존재하는지도 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-04",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/passwd /etc/passwd.bak ; cp /etc/shadow /etc/shadow.bak 2) pwconv 명령으로 /etc/passwd 의 암호를 /etc/shadow 로 옮기고 passwd 두 번째 필드를 x 로 변경한다. 3) awk 명령으로 다시 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-05",
+    "section": "개요",
+    "text": "UID 0 은 root 권한을 의미한다. root 이외의 계정이 UID 0 을 가지면 해당 계정이 root 와 동일한 권한을 가지므로 공격자의 백도어 계정으로 악용될 수 있다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-05",
+    "section": "판단기준",
+    "text": "양호: root 계정만 UID 가 0 인 경우. 취약: root 이외의 계정이 UID 0 을 가진 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-05",
+    "section": "점검방법",
+    "text": "awk -F: '$3 == 0 {print $1}' /etc/passwd 를 실행한다. root 한 개만 출력되어야 하며, 다른 계정이 출력되면 취약이다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-05",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/passwd /etc/passwd.bak 2) 해당 계정이 불필요하면 userdel 계정명 으로 삭제한다. 3) 필요한 계정이면 usermod -u 새UID 계정명 으로 사용하지 않는 UID 로 변경한다. 4) 해당 계정 소유 파일의 소유자가 바뀔 수 있으므로 변경 후 find / -uid 이전UID 로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-06",
+    "section": "개요",
+    "text": "su 명령을 모든 사용자가 쓸 수 있으면 일반 계정이 탈취되었을 때 root 비밀번호 대입 공격에 이용될 수 있다. su 를 사용할 수 있는 사용자를 특정 그룹(wheel)으로 제한해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-06",
+    "section": "판단기준",
+    "text": "양호: su 명령을 특정 그룹(wheel)의 구성원만 사용할 수 있도록 제한한 경우. 취약: 모든 사용자가 su 명령을 사용할 수 있는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-06",
+    "section": "점검방법",
+    "text": "ls -l /usr/bin/su 로 그룹과 권한(4750, 그룹 wheel)을 확인한다. grep pam_wheel /etc/pam.d/su 에서 auth required pam_wheel.so use_uid 줄이 주석 처리되지 않았는지 확인한다. getent group wheel 로 구성원을 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-06",
+    "section": "조치방법",
+    "text": "1) 백업: cp /etc/pam.d/su /etc/pam.d/su.bak 2) /etc/pam.d/su 에서 auth required pam_wheel.so use_uid 줄의 주석(#)을 제거한다. 3) chgrp wheel /usr/bin/su ; chmod 4750 /usr/bin/su 로 권한을 제한한다. 4) 사용이 필요한 계정은 usermod -aG wheel 계정명 으로 wheel 그룹에 추가한다. 주의: wheel 그룹에 아무도 없는 상태로 적용하면 su 를 아무도 쓸 수 없다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-14",
+    "section": "개요",
+    "text": "PATH 환경변수에 현재 디렉터리(.)나 빈 항목(::)이 앞쪽이나 중간에 있으면, 공격자가 만든 악성 파일이 정상 명령어보다 먼저 실행될 수 있다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-14",
+    "section": "판단기준",
+    "text": "양호: PATH 환경변수에 '.' 또는 '::' 이 포함되어 있지 않거나 맨 뒤에 위치한 경우. 취약: PATH 맨 앞이나 중간에 '.' 또는 '::' 이 포함된 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-14",
+    "section": "점검방법",
+    "text": "echo $PATH 로 현재 값을 확인하고, grep -nE 'PATH' /etc/profile /etc/bashrc /root/.bash_profile /root/.bashrc 에서 PATH 설정에 '.' 이나 '::' 이 있는지 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-14",
+    "section": "조치방법",
+    "text": "1) 백업: cp /root/.bash_profile /root/.bash_profile.bak (설정이 있는 파일마다 백업) 2) 해당 파일의 PATH 설정에서 '.' 과 '::' 항목을 제거한다. 꼭 필요하면 PATH 맨 뒤로 옮긴다. 3) source /root/.bash_profile 또는 재로그인 후 echo $PATH 로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-15",
+    "section": "개요",
+    "text": "소유자나 그룹이 없는 파일은 삭제된 계정의 UID 가 재사용되면 다른 사용자가 해당 파일의 소유권을 갖게 되고, 침입 흔적일 수도 있다. 소유자가 없는 파일은 없어야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-15",
+    "section": "판단기준",
+    "text": "양호: 소유자 또는 그룹이 존재하지 않는 파일 및 디렉터리가 없는 경우. 취약: 소유자 또는 그룹이 없는 파일 및 디렉터리가 존재하는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-15",
+    "section": "점검방법",
+    "text": "find / -xdev \\( -nouser -o -nogroup \\) -print 2>/dev/null 을 실행한다. 출력되는 파일이 없으면 양호이다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-15",
+    "section": "조치방법",
+    "text": "1) 출력된 파일이 필요한 파일인지, 침입 흔적인지 먼저 확인한다. 2) 필요한 파일이면 chown 적절한소유자:적절한그룹 파일 로 소유자를 지정한다. 3) 불필요한 파일이면 삭제한다. 주의: 삭제 전에 파일 내용과 생성 시각을 확인하고, 침입이 의심되면 증거를 보존한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-16",
+    "section": "개요",
+    "text": "/etc/passwd 는 모든 계정 정보를 담고 있다. 일반 사용자가 이 파일을 수정할 수 있으면 UID 를 0 으로 바꾸는 등의 방법으로 권한 상승이 가능하다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-16",
+    "section": "판단기준",
+    "text": "양호: /etc/passwd 파일의 소유자가 root 이고 권한이 644 이하인 경우. 취약: 소유자가 root 가 아니거나 권한이 644 를 초과하는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-16",
+    "section": "점검방법",
+    "text": "ls -l /etc/passwd 또는 stat -c '%U %a' /etc/passwd 로 소유자와 권한을 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-16",
+    "section": "조치방법",
+    "text": "1) 백업: cp -p /etc/passwd /etc/passwd.bak 2) chown root:root /etc/passwd 3) chmod 644 /etc/passwd 4) ls -l /etc/passwd 로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-17",
+    "section": "개요",
+    "text": "시스템 시작 스크립트와 서비스 유닛 파일을 일반 사용자가 수정할 수 있으면, 부팅 시 root 권한으로 악성 코드가 실행되도록 만들 수 있다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-17",
+    "section": "판단기준",
+    "text": "양호: 시스템 시작 스크립트 파일의 소유자가 root 이고, 일반 사용자(other)의 쓰기 권한이 없는 경우. 취약: 소유자가 root 가 아니거나 other 에 쓰기 권한이 있는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-17",
+    "section": "점검방법",
+    "text": "ls -l /etc/rc.d/init.d/ /etc/rc.d/rc.local 로 확인한다. systemd 사용 시 ls -l /etc/systemd/system/ /usr/lib/systemd/system/ 의 서비스 파일을 확인한다. find /etc/rc.d /etc/systemd/system -type f -perm -002 로 other 쓰기 가능 파일을 찾는다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-17",
+    "section": "조치방법",
+    "text": "1) 대상 파일 목록과 권한을 기록해 둔다. 2) chown root:root 대상파일 3) chmod o-w 대상파일 (other 의 쓰기 권한 제거) 4) find 명령으로 other 쓰기 가능 파일이 더 없는지 다시 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-18",
+    "section": "개요",
+    "text": "/etc/shadow 에는 모든 계정의 암호 해시가 저장되어 있다. 일반 사용자가 읽을 수 있으면 해시를 가져가 오프라인으로 크래킹할 수 있다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-18",
+    "section": "판단기준",
+    "text": "양호: /etc/shadow 파일의 소유자가 root 이고 권한이 400 이하인 경우. 취약: 소유자가 root 가 아니거나 권한이 400 을 초과하는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-18",
+    "section": "점검방법",
+    "text": "ls -l /etc/shadow 또는 stat -c '%U %a' /etc/shadow 로 소유자와 권한을 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-18",
+    "section": "조치방법",
+    "text": "1) 백업: cp -p /etc/shadow /etc/shadow.bak 2) chown root:root /etc/shadow 3) chmod 400 /etc/shadow 4) ls -l /etc/shadow 로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-35",
+    "section": "개요",
+    "text": "FTP, NFS, Samba(SMB) 같은 공유 서비스에서 인증 없이(익명으로) 접근할 수 있으면 중요 파일이 노출되거나 악성 파일이 업로드될 수 있다. 익명 접근은 차단해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-35",
+    "section": "판단기준",
+    "text": "양호: 공유 서비스를 사용하지 않거나, 사용하더라도 익명(Anonymous·Guest) 접근이 차단된 경우. 취약: 공유 서비스에서 익명 접근이 허용된 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-35",
+    "section": "점검방법",
+    "text": "FTP(vsftpd): grep -i anonymous_enable /etc/vsftpd/vsftpd.conf 에서 값이 NO 인지 확인한다. Samba: grep -iE 'guest ok|map to guest' /etc/samba/smb.conf 에서 guest ok = no, map to guest = never 인지 확인한다. NFS: cat /etc/exports 에서 *(rw) 처럼 모든 호스트에 공개된 설정이 없는지 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-35",
+    "section": "조치방법",
+    "text": "1) 해당 설정 파일을 cp 로 백업한다. 2) vsftpd: anonymous_enable=NO 로 설정하고 systemctl restart vsftpd 3) Samba: guest ok = no, map to guest = never 로 설정하고 systemctl restart smb 4) NFS: /etc/exports 에서 접근 허용 호스트를 특정 IP 로 제한하고 exportfs -ra 로 반영한다. 5) 서비스를 사용하지 않으면 systemctl disable --now 서비스명 으로 중지한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-38",
+    "section": "개요",
+    "text": "echo, discard, daytime, chargen 같은 불필요한 소규모(small) 서비스는 DoS 공격에 악용될 수 있다. 사용하지 않는 서비스는 비활성화해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-38",
+    "section": "판단기준",
+    "text": "양호: DoS 공격에 취약한 서비스(echo, discard, daytime, chargen 등)가 비활성화된 경우. 취약: 해당 서비스가 활성화되어 있는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-38",
+    "section": "점검방법",
+    "text": "ss -lntup 로 열려 있는 포트(7 echo, 9 discard, 13 daytime, 19 chargen)를 확인한다. xinetd 사용 시 ls /etc/xinetd.d/ 에서 echo, discard, daytime, chargen 파일의 disable 값을 확인한다. systemctl list-unit-files | grep -E 'echo|discard|daytime|chargen' 로 관련 유닛도 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-38",
+    "section": "조치방법",
+    "text": "1) xinetd 사용 시 /etc/xinetd.d/ 의 해당 파일에서 disable = yes 로 설정하고 systemctl restart xinetd 2) systemd 소켓/서비스 유닛은 systemctl disable --now 유닛명 으로 중지한다. 3) 조치 후 ss -lntup 로 해당 포트가 닫혔는지 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-45",
+    "section": "개요",
+    "text": "메일 서비스(sendmail, postfix, exim 등)의 오래된 버전에는 알려진 취약점이 많아 원격 코드 실행 등에 악용될 수 있다. 최신 보안 패치가 적용된 버전을 사용해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-45",
+    "section": "판단기준",
+    "text": "양호: 메일 서비스를 사용하지 않거나, 사용 시 최신 버전(보안 패치 적용)을 사용하는 경우. 취약: 메일 서비스가 취약점이 알려진 구버전인 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-45",
+    "section": "점검방법",
+    "text": "rpm -qa | grep -E 'postfix|sendmail|exim' 로 설치 여부와 버전을 확인한다. postfix: postconf mail_version, sendmail: sendmail -d0.1 -bv root 로 버전을 확인하고 배포판의 최신 패치 버전과 비교한다. systemctl is-active postfix sendmail 로 실행 여부도 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-45",
+    "section": "조치방법",
+    "text": "1) 메일 서비스를 사용하지 않으면 systemctl disable --now postfix (또는 sendmail) 로 중지하고 필요 없으면 dnf remove 로 제거한다. 2) 사용하면 dnf update postfix (또는 sendmail) 로 최신 보안 패치를 적용한다. 3) 적용 후 systemctl restart postfix 와 버전 확인을 수행한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-46",
+    "section": "개요",
+    "text": "일반 사용자가 메일 큐를 임의로 실행하거나 조작할 수 있으면 메일 서비스 오남용과 정보 노출이 발생할 수 있다. 메일 서비스 관리 명령은 일반 사용자의 실행을 막아야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-46",
+    "section": "판단기준",
+    "text": "양호: 메일 서비스를 사용하지 않거나, 일반 사용자의 메일 서비스 실행 방지 설정이 적용된 경우(sendmail: restrictqrun, postfix: postsuper 일반 사용자 실행 권한 제거). 취약: 일반 사용자가 메일 서비스 명령을 실행할 수 있는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-46",
+    "section": "점검방법",
+    "text": "sendmail: grep PrivacyOptions /etc/mail/sendmail.cf 에 restrictqrun 이 포함되어 있는지 확인한다. postfix: ls -l /usr/sbin/postsuper 에서 other 의 실행(x) 권한이 없는지 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-46",
+    "section": "조치방법",
+    "text": "1) sendmail: /etc/mail/sendmail.cf 를 백업한 뒤 PrivacyOptions 에 restrictqrun 을 추가하고 systemctl restart sendmail 2) postfix: chmod o-x /usr/sbin/postsuper (예: chmod 750) 로 일반 사용자 실행 권한을 제거한다. 3) 설정 후 ls -l 로 권한을 다시 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-65",
+    "section": "개요",
+    "text": "서버 시각이 정확하지 않으면 로그의 시간이 맞지 않아 침해 사고 분석과 감사 추적이 어려워진다. NTP 등으로 신뢰할 수 있는 시간 서버와 동기화해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-65",
+    "section": "판단기준",
+    "text": "양호: NTP 또는 시각 동기화 서비스(chronyd, ntpd)가 설정되어 있고 정상적으로 동기화되는 경우. 취약: 시각 동기화가 설정되지 않았거나 동작하지 않는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-65",
+    "section": "점검방법",
+    "text": "Rocky Linux 9 는 chrony 를 사용한다. systemctl is-active chronyd 로 실행 여부를, grep -E '^(server|pool)' /etc/chrony.conf 로 시간 서버 설정을, chronyc sources -v 와 chronyc tracking 으로 동기화 상태를 확인한다. ntpd 를 쓰면 ntpq -p 로 확인한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-65",
+    "section": "조치방법",
+    "text": "1) chrony 가 없으면 dnf install chrony 2) 백업: cp /etc/chrony.conf /etc/chrony.conf.bak 3) /etc/chrony.conf 에 사용할 시간 서버를 server 시간서버주소 iburst 형식으로 추가한다. (내부망이면 조직의 NTP 서버 사용) 4) systemctl enable --now chronyd 5) chronyc sources 에 서버 앞 ^* 표시가 나오면 동기화된 상태이다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-67",
+    "section": "개요",
+    "text": "로그 파일은 침해 사고 분석의 핵심 증거이다. 일반 사용자가 로그를 수정하거나 삭제할 수 있으면 공격 흔적을 지울 수 있으므로 소유자와 권한을 제한해야 한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-67",
+    "section": "판단기준",
+    "text": "양호: 로그 디렉터리(/var/log)의 파일 소유자가 root 이고 권한이 644 이하인 경우. 취약: 소유자가 root 가 아니거나 권한이 644 를 초과하는 파일이 있는 경우.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-67",
+    "section": "점검방법",
+    "text": "ls -l /var/log 로 확인하고, find /var/log -type f \\( ! -user root -o -perm /133 \\) -ls 로 소유자가 root 가 아니거나 권한이 644 를 초과하는 파일을 찾는다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  },
+  {
+    "item_code": "U-67",
+    "section": "조치방법",
+    "text": "1) 대상 파일 목록을 기록한다. 2) chown root:root 대상파일 3) chmod 644 대상파일 (일괄: find /var/log -type f -exec chmod go-w {} +) 4) 주의: wtmp, btmp 등 일부 로그는 시스템이 특정 그룹 권한을 요구하므로 무조건 변경하지 말고 서비스 영향 여부를 확인한 뒤 적용한다.",
+    "source": "AI 작성 초안 (KISA 원문 대조 필요)"
+  }
+]
