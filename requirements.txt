@@ -2,3 +2,4 @@ openai>=1.40.0
 numpy>=1.26.0
 python-dotenv>=1.0.1
 streamlit>=1.35.0
+pdfplumber>=0.11.0  # 가이드 PDF 전처리(ai_report/preprocess)용
