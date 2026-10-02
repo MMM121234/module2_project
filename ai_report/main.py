@@ -4,7 +4,7 @@
     python -m ai_report.main                  # ai_report/data/result.json 사용
     python -m ai_report.main 내점검결과.json   # 다른 JSON 사용
 
-결과: ai_report/outputs/report.json  (조치 스크립트도 이 JSON 의 remediation_script 에 들어 있다)
+결과: ai_report/outputs/report.json
 """
 
 import json

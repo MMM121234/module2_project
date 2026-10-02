@@ -77,8 +77,6 @@ report = generate_report(점검결과_dict)   # 취약·수동확인 항목 수�
   - `ai` : `{risk, remediation_steps, commands, verification, caution}` (GPT 응답 그대로라 일부 키가 빠질 수 있음)
   - `guide_used` : 근거로 쓴 가이드 원문
   - `error` : AI 작성 실패 사유 (정상이면 `""`)
-- `remediation_script` : 조치 명령어를 모은 복사용 bash 스크립트 텍스트
-
 ### 가이드 데이터
 
 `ai_report/data/guide_chunks.json` — 현재는 AI 작성 **초안**이며 KISA 원문 전처리 결과로 교체 예정.

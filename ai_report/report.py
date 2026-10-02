@@ -17,7 +17,7 @@ import json
 from ai_report.rag import embed, get_client, load_db
 
 CHAT_MODEL = "gpt-4o-mini"  # 보고서를 쓰는 GPT 모델 (바꾸려면 여기만 수정)
-TOP_K = 3  # 항목당 GPT 에게 보여줄 가이드 조각 개수
+TOP_K = 5  # 항목당 GPT 에게 보여줄 가이드 조각 개수
 
 # AI 가 조치 내용을 작성할 status 목록 (1팀 status: SAFE | VULNERABLE | REVIEW | NA | ERROR)
 AI_TARGET_STATUS = ("VULNERABLE", "REVIEW")
@@ -34,7 +34,7 @@ SYSTEM_PROMPT = """\
 2. 설정 파일을 수정하는 조치는 먼저 백업하도록 안내하세요.
 3. 서비스 중단 등 부작용이 있으면 caution 에 쓰세요.
 4. 한국어로 간결하게 쓰세요.
-5. commands 는 조치 스크립트에 그대로 들어가므로, 설명 문장이나 설정 줄만 단독으로 쓰지 말고
+5. commands 는 관리자가 복사해서 그대로 실행하므로, 설명 문장이나 설정 줄만 단독으로 쓰지 말고
    bash 에서 바로 실행되는 명령어만 한 줄씩 쓰세요. (설정 파일 수정은 sed 등 명령어로 쓰고,
    수정 전 cp 로 백업하는 명령어를 먼저 넣으세요.)
 6. commands 에는 "사용자명", "계정명", "<값>" 같은 자리표시자를 쓰지 마세요.
@@ -45,7 +45,9 @@ SYSTEM_PROMPT = """\
 8. sed 로 설정을 바꿀 때는 주석(#) 처리된 줄과 공백 차이도 처리하는 패턴을 쓰세요.
    (예: "sed -i -E 's/^[#[:space:]]*PermitRootLogin[[:space:]]+.*/PermitRootLogin no/' 파일")
 9. 문장은 모두 "~합니다" 체로 통일하세요.
-10. 아래 키를 가진 JSON 객체 하나로만 답하세요.
+10. [가이드 발췌]에 구체적인 명령어나 설정값이 없으면 명령어를 추측해서 만들지 마세요.
+    그 경우 commands 는 빈 배열([])로 두고, 가이드에 있는 설명만 remediation_steps 에 쓰세요.
+11. 아래 키를 가진 JSON 객체 하나로만 답하세요.
 
 {
   "risk": "이 설정이 왜 위험한지 2~3문장",
@@ -93,8 +95,6 @@ def generate_report(scan: dict) -> dict:
         "diagnosis_standard": scan.get("diagnosis_standard", {}),
         "summary": scan.get("summary", {}),
         "items": items,
-        # 항목별 조치 명령어를 모은 복사용 bash 스크립트 (UI 에서 st.code 로 보여주면 복사 버튼이 생김)
-        "remediation_script": make_script(scan["target_info"], items),
     }
 
 
@@ -124,33 +124,3 @@ def ask_gpt(client, os_version: str, result: dict, guides: list[dict]) -> dict:
         ],
     )
     return json.loads(response.choices[0].message.content)
-
-
-def make_script(target_info: dict, items: list[dict]) -> str:
-    """AI 가 만든 조치 명령어들을 모아 '복사해서 쓸 수 있는' bash 스크립트(문자열)로 만든다.
-
-    이 프로그램이 서버에서 실행하는 것이 아니라, 사용자가 화면에서 복사해 가져다 쓰는 용도다.
-    그래서 붙여넣기 해도 터미널이 닫히거나 입력을 기다리지 않도록 exit, read 같은 명령은 넣지 않고
-    항목별 설명 주석 + 명령어만 담는다.
-    """
-    t = target_info
-    lines = [
-        "#!/bin/bash",
-        "# ============================================================",
-        "# AI 가 생성한 취약점 조치 스크립트 (자동 생성 - 반드시 검토 후 사용하세요)",
-        f"# 대상: {t.get('target_host')} / {t.get('os_version')}",
-        "# 운영 서버에 적용하기 전에 테스트 서버에서 먼저 확인하세요.",
-        "# ============================================================",
-        "",
-    ]
-    for it in items:
-        ai = it["ai"]
-        if not ai or not ai.get("commands"):
-            continue  # 양호 항목, AI 실패 항목, 명령어가 없는 항목은 제외
-
-        lines += [f"# ===== {it['item_code']} {it['item_name']} ====="]
-        if ai.get("caution"):
-            lines += [f"# 주의: {c}" for c in ai["caution"].splitlines()]
-        lines += ai["commands"]
-        lines.append("")
-    return "\n".join(lines)
