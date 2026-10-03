@@ -1,6 +1,7 @@
 import html
 import json
 import re
+from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -9,31 +10,49 @@ st.set_page_config(page_title="항목 상세", page_icon="🛡️", layout="wide
 
 DASHBOARD_PAGE = "pages/1_dash.py"
 
-# ---------------------------------------------------------------
-# 0. 시작 화면에서 저장한 데이터 꺼내기
-# ---------------------------------------------------------------
-with open("./data/sample_result.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
-# data = st.session_state.get("data")
-# if data is None:
-#     st.warning("먼저 시작 화면에서 점검을 실행해주세요.")
-#     if st.button("← 시작 화면으로"):
-#         st.switch_page("app.py")
-#     st.stop()
+# report.json 위치 후보 (위에서부터 먼저 발견되는 파일 사용)
+HERE = Path(__file__).resolve().parent
+REPORT_CANDIDATES = [
+    Path("data/report.json"),
+    Path("report.json"),
+    HERE.parent / "data" / "report.json",
+    HERE.parent / "report.json",
+    HERE / "report.json",
+]
 
-results = data["results"]
-info = data.get("target_info", {})
 
-if not results:
-    st.warning("표시할 점검 항목이 없어요.")
-    if st.button("← 시작 화면으로"):
-        st.switch_page("app.py")
+# ---------------------------------------------------------------
+# 0. report.json 읽기
+# ---------------------------------------------------------------
+@st.cache_data
+def load_report(path_str):
+    with open(path_str, encoding="utf-8") as f:
+        return json.load(f)
+
+
+report_path = next((p for p in REPORT_CANDIDATES if p.exists()), None)
+if report_path is None:
+    st.error("report.json 파일을 찾을 수 없어요. 아래 위치 중 한 곳에 넣어주세요.")
+    st.code("\n".join(str(p) for p in REPORT_CANDIDATES))
+    st.stop()
+
+report = load_report(str(report_path))
+info = report.get("target_info", {})
+items = report.get("items", [])
+
+if not items:
+    st.warning("report.json에 점검 항목(items)이 없어요.")
     st.stop()
 
 
 def esc(v):
-    """JSON 값을 HTML에 넣기 전에 꼭 거치는 함수 (XSS 방지)"""
+    """값을 HTML에 넣기 전에 꼭 거치는 함수 (XSS 방지)"""
     return html.escape(str(v if v is not None else "-"))
+
+
+def esc_br(v):
+    """이스케이프 + 줄바꿈을 <br>로 (마크다운이 빈 줄에서 HTML을 끊지 않도록 한 줄로 만듦)"""
+    return esc(v).replace("\r", "").replace("\n", "<br>")
 
 
 def clean_cat(c):
@@ -41,24 +60,18 @@ def clean_cat(c):
     return re.sub(r"^\d+\.\s*", "", c or "")
 
 
-def pick(r, *keys, default=None):
-    """JSON에서 여러 후보 키 중 값이 있는 첫 번째를 꺼냄 (키 이름이 달라도 동작)"""
-    for k in keys:
-        if r.get(k):
-            return r[k]
-    return default
-
-
 # ---------------------------------------------------------------
 # 1. 어떤 항목을 보여줄지 결정
 #    우선순위: 주소의 ?code=U-01 → session_state["selected_code"] → 첫 번째 취약 항목 → 첫 항목
 # ---------------------------------------------------------------
 code = st.query_params.get("code") or st.session_state.get("selected_code")
-item = next((r for r in results if r.get("item_code") == code), None)
+item = next((r for r in items if r.get("item_code") == code), None)
 if item is None:
-    item = next((r for r in results if r.get("status") == "VULNERABLE"), results[0])
+    item = next((r for r in items if r.get("status") == "VULNERABLE"), items[0])
 
 status = item.get("status")
+ai = item.get("ai") or {}
+guides = item.get("guide_used") or []
 
 STATUS = {
     "VULNERABLE": ("취약", "#FBE9DF", "#8A3109"),
@@ -69,44 +82,86 @@ STATUS = {
 }
 s_label, s_bg, s_fg = STATUS.get(status, (status, "#ECEDEA", "#4A4E57"))
 
+
 # ---------------------------------------------------------------
-# 2. 항목 데이터 정리 (JSON에 없으면 빈 칸 대신 안내 문구)
+# 2. report.json → 화면용 값 정리
 # ---------------------------------------------------------------
-code_txt = item.get("item_code", "-")
-check_file = pick(item, "check_file", "target_file", "file", default="-")
-check_cmd = pick(item, "check_command", "command", "cmd", default="-")
-expected = pick(item, "expected_value", "expected", "good_criteria", default="-")
-current = pick(item, "current_value", default="-")
+def guide_section(name_part):
+    """guide_used 중 section 이름에 name_part가 들어간 첫 번째 text"""
+    for g in guides:
+        if name_part in (g.get("section") or ""):
+            return g.get("text") or ""
+    return ""
+
+
+overview = guide_section("개요")
+
+# 위험도: KISA 개요 첫 줄의 '(중요도: 상, ...)' 에서 추출
+m = re.search(r"중요도:\s*([상중하])", overview)
+severity = m.group(1) if m else None
+
+# 제목 아래 설명: KISA 개요의 '점검 내용' 한 줄 (없으면 판정 사유)
+m = re.search(r"점검 내용:\s*(.+)", overview)
+desc = m.group(1).strip() if m else (item.get("reason") or "-")
+
+# 양호 기준: KISA '판단기준' 항목에서 '양호 : ...' 부분 추출 (없으면 줄 숨김)
+criteria = ""
+m = re.search(r"양호\s*:\s*(.+?)(?:\n※|\n취약|$)", guide_section("판단기준"), re.S)
+if m:
+    criteria = re.sub(r"\s+", " ", m.group(1)).strip()
+
+current = item.get("current_value") or "-"
 
 if status == "VULNERABLE":
     verdict = "기준과 다르므로 <b>취약</b> (스크립트 자동 판정)"
 elif status == "SAFE":
     verdict = "기준과 같으므로 <b>양호</b> (스크립트 자동 판정)"
+elif status == "REVIEW":
+    verdict = "<b>수동 확인</b> 필요 (AI 1차 분석 참고)"
 else:
-    verdict = f"<b>{esc(s_label)}</b> · {esc(item.get('reason') or '-')}"
-
+    verdict = f"<b>{esc(s_label)}</b>"
 cur_color = "#9A3A0B" if status == "VULNERABLE" else "#1A3794"
 
-kisa_text = pick(item, "kisa_guide", "kisa_text", "rag_result", "guide_text")
-kisa_html = (esc(kisa_text).replace("\n", "<br>") if kisa_text
-             else f"[KISA 가이드 {esc(code_txt)} 항목의 점검 내용 · 판단 기준 · 조치 방법 원문이 이곳에 표시됩니다]")
-kisa_source = pick(item, "kisa_source", "rag_source",
-                   default=f"출처: 주요정보통신기반시설 기술적 취약점 분석·평가 가이드 (2026) · Unix 서버 · {code_txt}")
-
-script = pick(item, "remediation_script", "fix_script", "ai_script", "script", default="")
-caution = pick(item, "caution", "script_caution", "ai_caution", default="")
-sum_eng = pick(item, "summary_engineer", "engineer_summary", "summary_eng", default="-")
-sum_exec = pick(item, "summary_exec", "executive_summary", "summary_ciso", default="-")
-
-# 조치 스크립트 → 줄 단위 HTML ('#'으로 시작하면 회색 주석)
-if script:
-    lines = []
-    for ln in str(script).split("\n"):
-        cls = "ln c" if ln.lstrip().startswith("#") else "ln"
-        lines.append(f'<div class="{cls}">{esc(ln) if ln else "&nbsp;"}</div>')
-    script_html = "".join(lines)
+# KISA 가이드 근거: 다른 OS(AIX · HP-UX · SOLARIS) 전용 조치사례는 제외
+OTHER_OS = ("AIX", "HP-UX", "SOLARIS")
+shown = [g for g in guides
+         if not (any(o in (g.get("section") or "") for o in OTHER_OS) and "LINUX" not in (g.get("section") or ""))]
+if shown:
+    parts = []
+    for i, g in enumerate(shown):
+        parts.append(f'<details{" open" if i == 0 else ""}><summary>{esc(g.get("section"))}</summary>'
+                     f'<div class="gtxt">{esc_br(g.get("text"))}</div></details>')
+    guide_html = f'<div class="guide">{"".join(parts)}</div>'
+    kisa_source = "출처: " + (shown[0].get("source") or "KISA 주요정보통신기반시설 기술적 취약점 분석·평가 상세가이드(2026)")
 else:
-    script_html = '<div class="ln c"># 아직 생성된 조치 스크립트가 없어요.</div>'
+    guide_html = '<div class="guide"><div class="gtxt" style="padding:10px 0">이 항목은 검색된 KISA 가이드 근거가 없어요.</div></div>'
+    kisa_source = "출처: -"
+
+# AI 조치 스크립트: 단계 설명을 주석으로, 그 아래에 명령어, 마지막에 확인 방법
+script_lines = []
+for i, step in enumerate(ai.get("remediation_steps") or [], 1):
+    script_lines.append(f"# {i}. {step}")
+if script_lines:
+    script_lines.append("")
+script_lines += ai.get("commands") or []
+if ai.get("verification"):
+    script_lines += ["", f"# 적용 확인: {ai['verification']}"]
+script = "\n".join(script_lines) if ai.get("commands") else ""
+
+if script:
+    ln_html = []
+    for ln in script.split("\n"):
+        cls = "ln c" if ln.lstrip().startswith("#") else "ln"
+        ln_html.append(f'<div class="{cls}">{esc(ln) if ln else "&nbsp;"}</div>')
+    script_html = "".join(ln_html)
+else:
+    script_html = '<div class="ln c"># 이 항목은 AI 조치 스크립트가 없어요. (AI 분석 대상이 아니에요)</div>'
+
+caution = ai.get("caution") or ""
+
+# 보고 대상별 요약: 엔지니어 = 조치 단계, 경영진 = 위험 설명
+sum_eng = " ".join(ai.get("remediation_steps") or []) or "-"
+sum_exec = ai.get("risk") or "-"
 
 # ---------------------------------------------------------------
 # 3. 디자인(CSS)
@@ -160,9 +215,13 @@ st.markdown(
     .kv { display:flex; gap:20px; align-items:baseline; padding:7px 0; font-size:14px; color:#16181D; }
     .kv .k { width:84px; flex-shrink:0; color:#6A6E76; font-size:14px; }
     .kv .v { font-family:'IBM Plex Mono', monospace; font-size:13px; word-break:break-all; }
-    .kv .v.plain { font-family:'IBM Plex Sans KR', sans-serif; font-size:14px; }
-    .ph { border:1px dashed #C9CCC4; border-radius:6px; padding:14px 16px; font-size:14px; color:#4A4E57;
-          line-height:1.6; }
+    .kv .v.plain { font-family:'IBM Plex Sans KR', sans-serif; font-size:14px; word-break:keep-all; }
+
+    /* KISA 가이드 근거 (점선 상자 · 섹션별 펼치기) */
+    .guide { border:1px dashed #C9CCC4; border-radius:6px; padding:4px 16px; max-height:300px; overflow-y:auto; }
+    .guide details + details { border-top:1px solid #ECEDEA; }
+    .guide summary { cursor:pointer; font-size:13px; font-weight:600; color:#16181D; padding:10px 0; }
+    .gtxt { font-size:13px; line-height:1.65; color:#4A4E57; padding-bottom:12px; }
     .src { font-size:12px; color:#6A6E76; margin-top:16px; }
 
     /* AI 조치 스크립트 카드 */
@@ -210,12 +269,12 @@ with st.container(key="back"):
     if st.button("← 전체 결과로 돌아가기", type="tertiary"):
         st.switch_page(DASHBOARD_PAGE)
 
+meta_txt = clean_cat(item.get("category")) + (f" · 위험도 {severity}" if severity else "")
 st.markdown(
     f"""<div class="head"><div>
-      <div class="meta"><span class="badge-code">{esc(code_txt)}</span>
-        <span>{esc(clean_cat(item.get("category")))} · 위험도 {esc(item.get("severity", "-"))}</span></div>
+      <div class="meta"><span class="badge-code">{esc(item.get("item_code"))}</span><span>{esc(meta_txt)}</span></div>
       <div class="t">{esc(item.get("item_name"))}</div>
-      <div class="d">{esc(pick(item, "description", "item_desc", "reason", default="-"))}</div>
+      <div class="d">{esc(desc)}</div>
     </div>
     <span class="pill-lg" style="background:{s_bg};color:{s_fg}">{esc(s_label)}</span></div>""",
     unsafe_allow_html=True,
@@ -225,19 +284,24 @@ st.markdown(
 # 6. 판정 근거 / KISA 가이드 근거
 # ---------------------------------------------------------------
 st.write("")
+criteria_row = (f'<div class="kv"><span class="k">양호 기준</span>'
+                f'<span class="v plain" style="color:#1A3794">{esc(criteria)}</span></div>') if criteria else ""
+
 c1, c2 = st.columns(2)
 c1.markdown(
-    f"""<div class="card"><div class="ch">판정 근거</div>
-      <div class="kv"><span class="k">점검 파일</span><span class="v">{esc(check_file)}</span></div>
-      <div class="kv"><span class="k">점검 명령</span><span class="v">{esc(check_cmd)}</span></div>
-      <div class="kv"><span class="k">양호 기준</span><span class="v" style="color:#1A3794">{esc(expected)}</span></div>
+    f"""
+      <div class="card"><div class="ch">판정 근거</div>
+      <div class="kv"><span class="k">점검 대상</span><span class="v">{esc(info.get("target_host"))} ({esc(info.get("ip_address"))})</span></div>
+      <div class="kv"><span class="k">점검 시각</span><span class="v">{esc(info.get("scan_time"))}</span></div>
       <div class="kv"><span class="k">현재 값</span><span class="v" style="color:{cur_color}">{esc(current)}</span></div>
-      <div class="kv"><span class="k">판정</span><span class="v plain">{verdict}</span></div></div>""",
+      {criteria_row}
+      <div class="kv"><span class="k">판정</span><span class="v">{verdict}</span></div></div>
+      """,
     unsafe_allow_html=True,
 )
 c2.markdown(
     f"""<div class="card"><div class="ch">KISA 가이드 근거<span class="tag">RAG 검색 결과</span></div>
-      <div class="ph">{kisa_html}</div>
+      {guide_html}
       <div class="src">{esc(kisa_source)}</div></div>""",
     unsafe_allow_html=True,
 )
@@ -245,7 +309,7 @@ c2.markdown(
 # ---------------------------------------------------------------
 # 7. AI 조치 스크립트 (복사 버튼 포함)
 # ---------------------------------------------------------------
-copy_js_text = json.dumps(str(script)).replace("</", "<\\/")
+copy_js_text = json.dumps(script).replace("</", "<\\/")
 copy_button = f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@600&display=swap');
@@ -277,8 +341,9 @@ with st.container(key="script_card"):
         h1.markdown('<div class="script-title">AI 조치 스크립트'
                     '<span class="ai-tag">AI 생성 · 적용 전 검토</span></div>',
                     unsafe_allow_html=True)
-        with h2:
-            components.html(copy_button, height=44)
+        if script:
+            with h2:
+                components.html(copy_button, height=44)
     st.markdown(f'<div class="code">{script_html}</div>', unsafe_allow_html=True)
     if caution:
         st.markdown(f'<div class="note">{esc(caution)}</div>', unsafe_allow_html=True)
